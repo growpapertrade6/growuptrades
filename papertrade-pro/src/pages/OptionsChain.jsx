@@ -4,6 +4,7 @@ import { usePortfolio } from '../context/PortfolioContext'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { fmtINR, fmtNum } from '../lib/format'
+import { isMarketOpen, marketClosedReason } from '../lib/marketHours'
 import { nextExpiries, generateChain, lotSizeFor, blackScholes } from '../lib/optionsEngine'
 
 const UNDERLYINGS = [...INDEX_UNIVERSE, ...STOCK_UNIVERSE]
@@ -45,12 +46,17 @@ export default function OptionsChain() {
   const totalCost = () => premiumValue() + brokerage()
 
   function canPlace() {
+    if (!isMarketOpen()) return false
     if (!leg || lots < 1) return false
     if (side === 'BUY' && totalCost() > cash) return false
     return true
   }
 
   async function placeOptionOrder() {
+    if (!isMarketOpen()) {
+      showToast('Order rejected', marketClosedReason(), true)
+      return
+    }
     if (!canPlace() || placing) {
       showToast('Order rejected', 'Insufficient funds', true)
       return
@@ -111,6 +117,11 @@ export default function OptionsChain() {
   }
 
   async function closeOptionPosition(pos) {
+    if (!isMarketOpen()) {
+      showToast('Order rejected', marketClosedReason(), true)
+      setConfirmExit(null)
+      return
+    }
     const inst = getInstrument(pos.underlying)
     const sp = prices[pos.underlying]?.ltp ?? inst.base
     const daysToExpiry = Math.max(0.5, (new Date(pos.expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -167,6 +178,12 @@ export default function OptionsChain() {
           <div className="num" style={{ fontSize: 18, fontWeight: 700 }}>₹{fmtNum(spot)}</div>
         </div>
       </div>
+
+      {!isMarketOpen() && (
+        <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid var(--red)', borderRadius: 6, padding: '10px 12px', marginBottom: 16, fontSize: 11.5, color: 'var(--red)', lineHeight: 1.5 }}>
+          Market closed · NSE/BSE F&amp;O hours: Mon–Fri, 9:15 AM – 3:30 PM IST. Orders can't be placed right now.
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 16, alignItems: 'start' }}>
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
